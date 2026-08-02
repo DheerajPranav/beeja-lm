@@ -152,3 +152,47 @@ to atol 1e-6. All on CPU for determinism; MPS is available for larger runs.
 **Understanding shift.** Attention is the mechanism that turns "predict from the
 previous character" into "predict from the whole visible context" — and the
 causal mask is precisely what keeps that prediction honest (no peeking ahead).
+
+---
+
+## Stage 4 — Byte-level BPE tokenizer (2026-08-03)
+
+**Concept.** Character tokens are simple but wasteful: one token per character
+means long sequences and no shared structure between "seed" and "seeds".
+Byte-Pair Encoding learns a middle ground — start from raw bytes and repeatedly
+fuse the most frequent adjacent pair into a new token.
+
+**Why byte-level.** UTF-8 encode first, so the base vocabulary is exactly the
+256 byte values. Any Unicode string (accents, CJK, emoji) is then representable
+with **no unknown token**, and decode is exact. Verified round trips on
+`"café — bīja 種子 🌱🌳 naïve"` — text never seen during training.
+
+**Algorithm.**
+- Train: `ids = utf8(text)`; loop `num_merges = vocab_size - 256` times: count
+  adjacent pairs (`get_stats`), pick the most frequent, `merge` it into id
+  `256+i`, record the merge. Determinism: `max(stats, key=stats.get)` — ties
+  broken by first appearance via stable dict order, so identical input ⇒
+  identical merges (tested).
+- Encode: greedily merge the present pair with the **lowest learned rank** until
+  no learned pair remains.
+- Decode: concatenate each id's byte string, UTF-8 decode.
+
+**Special tokens.** Registered above the BPE range (e.g. `<|endoftext|>` → 320).
+Recognised only when `allowed_special` permits; otherwise the literal string is
+encoded as ordinary bytes. This prevents user text from spoofing control tokens.
+
+**Save/load.** JSON stores the ordered merges + special tokens; the byte vocab is
+rebuilt deterministically because every merge combines lower ids into a higher
+one. Reload is identical (merges, vocab, and encodings all match).
+
+**Measured compression (held-out val text, 64 merges).**
+
+    bytes=64  tokens=26  bytes_per_token=2.46
+
+So each token stands in for ~2.46 bytes vs the byte-level baseline of 1.0. The
+corpus is tiny, so this is a mechanism demonstration, not a production ratio.
+
+**Understanding shift.** Tokenization is a *compression* choice that trades
+vocabulary size against sequence length. More merges → shorter sequences (cheaper
+attention, which is O(T²)) but a larger embedding/LM-head. The next stages can
+now train on subword ids instead of characters.

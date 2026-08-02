@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`transformer-complete` — next: `tokenizer`
+`tokenizer-complete` — next: `pretrain`
 
 ## Milestones
 
@@ -18,7 +18,7 @@
 | Bootstrap | Complete | `pyproject.toml` + `src/beeja` package installs editable; env report shows arm64 / 8 GiB / MPS available / torch 2.13.0; 12 tests pass; ruff clean |
 | Bigram baseline | Complete | Char tokenizer round-trips (ASCII/Unicode); batch shapes tested; loss 4.07→2.06 over 500 steps on embedded corpus; fixed-seed generation reproducible; 35 tests pass |
 | Beeja-3M baseline | Complete | Measured 3,211,776 params (~3.21M, 12.25 MiB fp32); attention shapes + probs-sum-to-1 + no-future-leakage tests pass; end-to-end causal leakage test passes; tiny-batch overfit → loss <0.05; checkpoint round-trip preserves logits (atol 1e-6); `Beeja-3M` checkpoint + model card generated; 49 tests pass |
-| Custom BPE tokenizer | Not started | Train/encode/decode and round-trip tests pass |
+| Custom BPE tokenizer | Complete | Byte-level BPE from scratch; ASCII + Unicode (emoji/CJK) round trips; deterministic training; save/load identity; special-token handling; measured compression 2.46 bytes/token on held-out text; 61 tests pass |
 | Intermediate pretraining | Not started | Resumable TinyStories-style training pipeline |
 | Modern architecture | Not started | RoPE, RMSNorm, SwiGLU comparisons pass |
 | Instruction tuning | Not started | Assistant-only loss and chat formatting verified |
@@ -58,6 +58,16 @@ Transformer (Beeja-3M) stage:
   # -> reports/beeja-3m-model-card.md
 ```
 
+Tokenizer (byte-level BPE) stage:
+
+```bash
+.venv/bin/python -m pytest                        # 61 passed
+.venv/bin/python scripts/train_tokenizer.py --vocab-size 320
+  # learned 64 merges; vocab_size=321 (256 bytes + 64 merges + 1 special)
+  # held-out compression: 2.4615 bytes/token (byte-level baseline = 1.0)
+  # -> checkpoints/beeja-bpe.json (gitignored)
+```
+
 ## Decisions
 
 - Primary framework: PyTorch.
@@ -71,4 +81,4 @@ Transformer (Beeja-3M) stage:
 
 ## Next action
 
-Run `/beeja-lab tokenizer`.
+Run `/beeja-lab pretrain`.
