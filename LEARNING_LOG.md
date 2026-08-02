@@ -96,3 +96,59 @@ q→u tendencies) but no word/sentence structure — the expected bigram ceiling
 that needs long-range dependencies is exactly the motivation for causal
 self-attention in the next stage: give each position access to *all* earlier
 positions, not just the previous one.
+
+---
+
+## Stage 3 — Beeja-3M decoder-only Transformer (2026-08-03)
+
+**Concept.** Replace the one-step bigram with a stack of pre-norm Transformer
+blocks. Each position builds a next-token distribution from *all* earlier
+positions via causal self-attention, plus a position-wise MLP.
+
+**Scaled dot-product attention (the core equation).**
+
+    Attention(Q, K, V) = softmax( (Q Kᵀ / √d_k) + causal_mask ) V
+
+The causal mask sets future key positions to `-inf` *before* softmax, so their
+probability is exactly 0. Verified two ways: (1) at the attention layer, the
+strictly-upper triangle of the attention matrix is all zeros and each row sums
+to 1; (2) end-to-end, perturbing the token at position 5 leaves logits at
+positions 0–4 bit-unchanged (atol 1e-5) while position 5 changes.
+
+**Tensor shapes (the boundaries).**
+
+    idx            [B, T]
+    tok+pos        [B, T, C]                 C = n_embd
+    qkv            [B, T, 3C] -> 3 x [B,T,C]
+    per-head       [B, n_head, T, head_size] head_size = C / n_head
+    att            [B, n_head, T, T]
+    context        [B, n_head, T, head_size] -> merge -> [B, T, C]
+    logits         [B, T, V]
+
+**Design choices.** Pre-norm residuals (`x = x + sub(LN(x))`) for a clean
+identity path; GELU MLP with 4x expansion; GPT-2 init (N(0, 0.02), residual
+projections scaled by 1/√(2·n_layer)); weight tying deferred to the modern stage.
+
+**Parameter budget (measured, Beeja-3M, char vocab V=38).**
+
+    total 3,211,776   mlp 2,102,272   attention 1,052,672
+    embedding 42,496  lm_head 9,728   norm/other 4,608     (12.25 MiB fp32)
+
+Per block ≈ 12·C² (attention 4C², MLP 8C²); with C=256, L=4 that dominates.
+`architecture.md` lists C=128 as a starting point, which measures ~0.8M — so I
+tuned C to 256 to make the "Beeja-3M" name honest (~3.2M). Embeddings are a
+negligible share because the char vocab is tiny; this will shift once BPE
+enlarges the vocab.
+
+**Memory caveat.** Parameter bytes are a floor. Training adds gradients (~1x),
+AdamW state (~2x), and activations (∝ batch·T·depth, with attention ∝ T²).
+
+**Result.** Smoke config (2L/d64, 107k params) overfits the sample corpus:
+loss 3.67 → 0.26; generated text jumps from bigram gibberish to real words and
+phrases ("understanding, not size", "the letters lean on the letters before").
+Tiny-batch overfit gate reaches <0.05. Checkpoint round-trip reproduces logits
+to atol 1e-6. All on CPU for determinism; MPS is available for larger runs.
+
+**Understanding shift.** Attention is the mechanism that turns "predict from the
+previous character" into "predict from the whole visible context" — and the
+causal mask is precisely what keeps that prediction honest (no peeking ahead).

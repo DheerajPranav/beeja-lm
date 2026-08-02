@@ -45,6 +45,34 @@ def fit(
     return losses
 
 
+def fit_batch(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    *,
+    steps: int,
+    lr: float = 3e-3,
+    device: torch.device | str = "cpu",
+) -> list[float]:
+    """Overfit a single fixed ``(x, y)`` batch; return the per-step loss history.
+
+    Used by the tiny-batch overfit gate: a correct model with enough capacity
+    should drive the loss on one memorised batch close to zero.
+    """
+    model.to(device)
+    model.train()
+    x, y = x.to(device), y.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    losses: list[float] = []
+    for _ in range(steps):
+        _, loss = model(x, y)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+    return losses
+
+
 @torch.no_grad()
 def evaluate_loss(
     model: torch.nn.Module,

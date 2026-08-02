@@ -23,7 +23,9 @@ def encode_dataset(text: str, tokenizer: CharTokenizer) -> torch.Tensor:
     return torch.tensor(tokenizer.encode(text), dtype=torch.long)
 
 
-def train_val_split(data: torch.Tensor, val_fraction: float = 0.1) -> tuple[torch.Tensor, torch.Tensor]:
+def train_val_split(
+    data: torch.Tensor, val_fraction: float = 0.1
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Split a 1-D id stream into contiguous ``(train, val)`` tensors.
 
     The split is positional (val is the tail), never shuffled, so no window can

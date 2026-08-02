@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`bigram-complete` — next: `transformer`
+`transformer-complete` — next: `tokenizer`
 
 ## Milestones
 
@@ -17,7 +17,7 @@
 |---|---|---|
 | Bootstrap | Complete | `pyproject.toml` + `src/beeja` package installs editable; env report shows arm64 / 8 GiB / MPS available / torch 2.13.0; 12 tests pass; ruff clean |
 | Bigram baseline | Complete | Char tokenizer round-trips (ASCII/Unicode); batch shapes tested; loss 4.07→2.06 over 500 steps on embedded corpus; fixed-seed generation reproducible; 35 tests pass |
-| Beeja-3M baseline | Not started | Approximately 3M parameters, causal attention tests, tiny-batch overfit, and checkpoint generation pass |
+| Beeja-3M baseline | Complete | Measured 3,211,776 params (~3.21M, 12.25 MiB fp32); attention shapes + probs-sum-to-1 + no-future-leakage tests pass; end-to-end causal leakage test passes; tiny-batch overfit → loss <0.05; checkpoint round-trip preserves logits (atol 1e-6); `Beeja-3M` checkpoint + model card generated; 49 tests pass |
 | Custom BPE tokenizer | Not started | Train/encode/decode and round-trip tests pass |
 | Intermediate pretraining | Not started | Resumable TinyStories-style training pipeline |
 | Modern architecture | Not started | RoPE, RMSNorm, SwiGLU comparisons pass |
@@ -45,6 +45,19 @@ Bigram stage:
   # loss: first=4.0738 last=2.0630 val=2.1703; prints a fixed-seed sample
 ```
 
+Transformer (Beeja-3M) stage:
+
+```bash
+.venv/bin/python -m pytest                        # 49 passed
+.venv/bin/python scripts/train_transformer.py --steps 500
+  # smoke config (2L/d64), 107008 params; loss first=3.6670 last=0.2621 val=1.9760
+  # sample now contains real words/phrases (attention uses long context)
+.venv/bin/python scripts/save_beeja3m.py
+  # Beeja-3M: 3,211,776 parameters (12.252 MiB fp32)
+  # -> checkpoints/beeja-3m-init.pt (untrained, random init; gitignored)
+  # -> reports/beeja-3m-model-card.md
+```
+
 ## Decisions
 
 - Primary framework: PyTorch.
@@ -58,4 +71,4 @@ Bigram stage:
 
 ## Next action
 
-Run `/beeja-lab transformer`.
+Run `/beeja-lab tokenizer`.
