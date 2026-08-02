@@ -9,14 +9,14 @@
 
 ## Current stage
 
-`bootstrap-complete` — next: `bigram`
+`bigram-complete` — next: `transformer`
 
 ## Milestones
 
 | Stage | Status | Acceptance evidence |
 |---|---|---|
 | Bootstrap | Complete | `pyproject.toml` + `src/beeja` package installs editable; env report shows arm64 / 8 GiB / MPS available / torch 2.13.0; 12 tests pass; ruff clean |
-| Bigram baseline | Not started | Loss decreases and text samples generate |
+| Bigram baseline | Complete | Char tokenizer round-trips (ASCII/Unicode); batch shapes tested; loss 4.07→2.06 over 500 steps on embedded corpus; fixed-seed generation reproducible; 35 tests pass |
 | Beeja-3M baseline | Not started | Approximately 3M parameters, causal attention tests, tiny-batch overfit, and checkpoint generation pass |
 | Custom BPE tokenizer | Not started | Train/encode/decode and round-trip tests pass |
 | Intermediate pretraining | Not started | Resumable TinyStories-style training pipeline |
@@ -36,6 +36,15 @@ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # clean
 ```
 
+Bigram stage:
+
+```bash
+.venv/bin/python -m pytest                        # 35 passed
+.venv/bin/python scripts/train_bigram.py --steps 500
+  # vocab_size=38 chars=640 train=576 val=64; params=1444 (=38^2)
+  # loss: first=4.0738 last=2.0630 val=2.1703; prints a fixed-seed sample
+```
+
 ## Decisions
 
 - Primary framework: PyTorch.
@@ -49,4 +58,4 @@ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]"
 
 ## Next action
 
-Run `/beeja-lab bigram`.
+Run `/beeja-lab transformer`.

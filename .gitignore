@@ -13,7 +13,9 @@ dist/
 CLAUDE.local.md
 checkpoints/*
 !checkpoints/.gitkeep
-data/
+# Downloaded datasets live in a repo-root data/ dir. Anchor with a leading slash
+# so it does NOT match the source package src/beeja/data/.
+/data/
 artifacts/
 wandb/
 mlruns/
