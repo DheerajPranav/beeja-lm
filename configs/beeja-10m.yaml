@@ -1,0 +1,43 @@
+# Beeja-10M intermediate pretraining config — PREPARED, NOT AUTO-LAUNCHED.
+#
+# This targets the intermediate architecture (~8-15M params) trained on a real
+# corpus. It is intended for Google Colab (CUDA) or an unattended local run you
+# start explicitly. Do NOT run it as part of normal turns.
+#
+# Steps to run:
+#   1) python scripts/download_data.py            # fetch the corpus into data/
+#   2) python -m beeja.train --config configs/beeja-10m.yaml --device cuda
+#   Resume after interruption:
+#   3) python -m beeja.train --config configs/beeja-10m.yaml --device cuda \
+#        --resume checkpoints/Beeja-10M-step2000.pt
+model:
+  block_size: 256
+  n_layer: 6
+  n_head: 8
+  n_embd: 256
+  dropout: 0.1
+
+data:
+  source: data/tinyshakespeare.txt   # created by scripts/download_data.py
+  tokenizer: bpe
+  vocab_size: 4096
+  val_fraction: 0.1
+
+training:
+  max_steps: 20000
+  warmup_steps: 500
+  max_lr: 0.0006
+  min_lr: 0.00006
+  weight_decay: 0.1
+  grad_clip: 1.0
+  batch_size: 32
+  grad_accum_steps: 4          # effective batch 128
+  eval_interval: 500
+  eval_batches: 50
+  checkpoint_interval: 1000
+  sample_interval: 1000
+  sample_tokens: 200
+  seed: 1337
+  device: cuda
+  name: Beeja-10M
+  out_dir: checkpoints

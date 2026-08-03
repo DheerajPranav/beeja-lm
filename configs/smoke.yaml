@@ -1,0 +1,34 @@
+# Smoke pretraining config: tiny, offline, completes in seconds on CPU.
+# Exercises the full pipeline (subword data, schedule, accumulation, eval,
+# checkpoint, resume, sampling) without any dataset download.
+model:
+  block_size: 16   # small so the tiny BPE-encoded val split can form windows
+  n_layer: 2
+  n_head: 4
+  n_embd: 64
+  dropout: 0.0
+
+data:
+  source: sample        # embedded corpus (no download)
+  tokenizer: bpe        # exercise the subword pipeline
+  vocab_size: 320
+  val_fraction: 0.1
+
+training:
+  max_steps: 200
+  warmup_steps: 20
+  max_lr: 0.003
+  min_lr: 0.0003
+  weight_decay: 0.1
+  grad_clip: 1.0
+  batch_size: 16
+  grad_accum_steps: 1
+  eval_interval: 50
+  eval_batches: 20
+  checkpoint_interval: 100
+  sample_interval: 100
+  sample_tokens: 120
+  seed: 1337
+  device: cpu
+  name: Beeja-3M
+  out_dir: checkpoints

@@ -196,3 +196,51 @@ corpus is tiny, so this is a mechanism demonstration, not a production ratio.
 vocabulary size against sequence length. More merges → shorter sequences (cheaper
 attention, which is O(T²)) but a larger embedding/LM-head. The next stages can
 now train on subword ids instead of characters.
+
+---
+
+## Stage 5 — Resumable pretraining pipeline (2026-08-03)
+
+**Concept.** Turn the one-off training loop into infrastructure: a config-driven,
+resumable trainer with a learning-rate schedule, gradient accumulation, gradient
+clipping, leakage-safe validation, checkpointing, and sample generation.
+
+**LR schedule.** Linear warmup then cosine decay:
+
+    step < warmup:  lr = max_lr · (step+1)/warmup
+    else:           lr = min_lr + ½(1+cos(π·ratio))·(max_lr−min_lr),
+                    ratio = (step−warmup)/(max_steps−warmup)
+
+Warmup protects a fresh model from a destabilising first step; cosine anneals to
+small refining steps. Verified: ramps to max_lr at the warmup boundary, decays
+monotonically, floors at min_lr past max_steps.
+
+**Gradient accumulation (the key identity).** K micro-batches of size B, each
+back-propagating `loss/K`, sum to exactly the gradient of one batch of size K·B
+— because cross-entropy averages over tokens and every micro-batch has the same
+token count. Tested to atol 1e-5. This is how a small machine simulates a large
+effective batch (here B·grad_accum).
+
+**Leakage discipline (a bug the tests caught).** First cut trained the char
+tokenizer on the train split only; a val-only character ('k') then had no id.
+Fix encodes the real distinction: the **alphabet / byte base** is the symbol
+space (built from the full corpus — not leakage), while **BPE merges** are
+*learned statistics* (train-only). Validation also runs under no-grad with a
+fixed generator and never touches optimizer/params (tested).
+
+**Exact resume.** The checkpoint stores model + optimizer state + step + the
+batch-sampling generator's RNG state. Restoring all four means an interrupted run
+continues on the identical trajectory. Verified two ways: a unit test (interrupted
+vs uninterrupted final params match to atol 1e-6) and the CLI (resume from step
+100 reproduced step-200 loss 0.1988 / val 5.1661 exactly).
+
+**Result.** Smoke config (2L/d64, block 16, BPE vocab 320, 143,104 params) runs
+200 steps in seconds on CPU: train loss → ~0.20 while val rises to ~5.1. That gap
+is honest overfitting of a ~640-char corpus — the pipeline is correct; the data
+is deliberately tiny. The Beeja-10M full-run config + a reproducible dataset
+download script are prepared but **not** launched (per project policy).
+
+**Understanding shift.** "Training a model" is mostly bookkeeping around the loss:
+schedule, accumulation, clipping, evaluation hygiene, and — most underrated —
+being able to stop and resume without changing the result. Determinism is a
+feature you engineer (own your RNG state), not something you hope for.

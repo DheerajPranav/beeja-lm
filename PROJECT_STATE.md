@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`tokenizer-complete` — next: `pretrain`
+`pretrain-complete` — next: `modernize`
 
 ## Milestones
 
@@ -19,7 +19,7 @@
 | Bigram baseline | Complete | Char tokenizer round-trips (ASCII/Unicode); batch shapes tested; loss 4.07→2.06 over 500 steps on embedded corpus; fixed-seed generation reproducible; 35 tests pass |
 | Beeja-3M baseline | Complete | Measured 3,211,776 params (~3.21M, 12.25 MiB fp32); attention shapes + probs-sum-to-1 + no-future-leakage tests pass; end-to-end causal leakage test passes; tiny-batch overfit → loss <0.05; checkpoint round-trip preserves logits (atol 1e-6); `Beeja-3M` checkpoint + model card generated; 49 tests pass |
 | Custom BPE tokenizer | Complete | Byte-level BPE from scratch; ASCII + Unicode (emoji/CJK) round trips; deterministic training; save/load identity; special-token handling; measured compression 2.46 bytes/token on held-out text; 61 tests pass |
-| Intermediate pretraining | Not started | Resumable TinyStories-style training pipeline |
+| Intermediate pretraining | Complete | Config-driven resumable pipeline (AdamW + warmup/cosine + clip + accumulation); leakage-safe subword data; smoke config completes locally; exact resume verified (unit + CLI); grad-accum == full-batch; full-run config prepared, not launched; 75 tests pass |
 | Modern architecture | Not started | RoPE, RMSNorm, SwiGLU comparisons pass |
 | Instruction tuning | Not started | Assistant-only loss and chat formatting verified |
 | Evaluation | Not started | Metrics and reproducible evaluation report |
@@ -68,6 +68,25 @@ Tokenizer (byte-level BPE) stage:
   # -> checkpoints/beeja-bpe.json (gitignored)
 ```
 
+Pretraining pipeline stage:
+
+```bash
+.venv/bin/python -m pytest                        # 75 passed
+.venv/bin/python -m beeja.train --config configs/smoke.yaml
+  # vocab=320 params=143,104; step200 loss=0.1988 val=5.1661 (tiny corpus overfits)
+  # periodic eval + checkpoints + samples; -> checkpoints/Beeja-3M-final.pt
+.venv/bin/python -m beeja.train --config configs/smoke.yaml \
+    --resume checkpoints/Beeja-3M-step100.pt
+  # resumes at step 100 -> reproduces step200 loss=0.1988 val=5.1661 exactly
+```
+
+Full run (PREPARED, NOT launched):
+
+```bash
+python scripts/download_data.py                          # fetch corpus into data/
+python -m beeja.train --config configs/beeja-10m.yaml --device cuda   # Colab/GPU
+```
+
 ## Decisions
 
 - Primary framework: PyTorch.
@@ -81,4 +100,4 @@ Tokenizer (byte-level BPE) stage:
 
 ## Next action
 
-Run `/beeja-lab pretrain`.
+Run `/beeja-lab modernize`.

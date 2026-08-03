@@ -13,6 +13,7 @@ authors = [{ name = "Dheeraj Pranav" }]
 dependencies = [
   "torch>=2.2",
   "numpy>=1.26",
+  "pyyaml>=6.0",  # config-driven training (configs/*.yaml)
 ]
 
 [project.optional-dependencies]
