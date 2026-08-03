@@ -2,7 +2,8 @@
 
 **First model release:** `Beeja-3M`  
 **Repository name:** `beeja-lm`  
-**Tagline:** *A small language model grown from first principles.*
+**Tagline:** *A small language model grown from first principles.*  
+**🌱 Live showcase:** <https://dheerajpranav.github.io/beeja-lm/>
 
 Beeja-3M is the first seed model in the Beeja family: a roughly three-million-parameter decoder-only Transformer implemented and trained from random initialization. The repository can later grow into `Beeja-10M`, `Beeja-30M`, and instruction-tuned variants without changing its identity.
 
