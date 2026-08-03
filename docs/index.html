@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beeja — a language model grown from first principles</title>
+<meta name="description" content="Beeja is an educational decoder-only language model built from scratch in PyTorch on an Apple Silicon Mac — attention, BPE, and a resumable training pipeline, all implemented and tested from the ground up." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8C%B1%3C/text%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel-2:#1c232d; --border:#2b333d;
+    --text:#e6edf3; --muted:#9aa7b4; --accent:#3fb27f; --accent-2:#6ee7b7;
+    --accent-soft:rgba(63,178,127,.14); --shadow:0 1px 3px rgba(0,0,0,.4);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f6f8fa; --panel:#ffffff; --panel-2:#f0f3f6; --border:#d8dee4;
+      --text:#1f2328; --muted:#59636e; --accent:#1a7f4b; --accent-2:#2ea36a;
+      --accent-soft:rgba(26,127,75,.10); --shadow:0 1px 3px rgba(140,149,159,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1117; --panel:#161b22; --panel-2:#1c232d; --border:#2b333d;
+    --text:#e6edf3; --muted:#9aa7b4; --accent:#3fb27f; --accent-2:#6ee7b7;
+    --accent-soft:rgba(63,178,127,.14); --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f8fa; --panel:#ffffff; --panel-2:#f0f3f6; --border:#d8dee4;
+    --text:#1f2328; --muted:#59636e; --accent:#1a7f4b; --accent-2:#2ea36a;
+    --accent-soft:rgba(26,127,75,.10); --shadow:0 1px 3px rgba(140,149,159,.25);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:940px;margin:0 auto;padding:0 20px}
+  code,.mono{font-family:var(--mono)}
+
+  /* Hero */
+  header.hero{padding:76px 0 54px;text-align:center;
+    background:radial-gradient(1200px 400px at 50% -80px,var(--accent-soft),transparent 70%);}
+  .sprout{font-size:52px;line-height:1;filter:drop-shadow(0 4px 10px rgba(0,0,0,.25))}
+  .hero h1{font-size:clamp(2.4rem,6vw,3.6rem);margin:.25em 0 .1em;letter-spacing:-.02em}
+  .hero .accent{color:var(--accent)}
+  .hero .tag{font-size:clamp(1.05rem,2.4vw,1.3rem);color:var(--muted);margin:0 auto;max-width:640px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:22px}
+  .pill{font-family:var(--mono);font-size:.78rem;padding:5px 11px;border:1px solid var(--border);
+    border-radius:999px;background:var(--panel);color:var(--muted)}
+  .cta{display:inline-flex;align-items:center;gap:8px;margin-top:26px;padding:11px 20px;border-radius:10px;
+    background:var(--accent);color:#04160e;font-weight:600;border:1px solid transparent}
+  .cta:hover{text-decoration:none;filter:brightness(1.06)}
+  :root[data-theme="light"] .cta,@media (prefers-color-scheme:light){.cta{color:#fff}}
+
+  section{padding:34px 0;border-top:1px solid var(--border)}
+  h2{font-size:1.5rem;margin:0 0 6px;letter-spacing:-.01em}
+  h2 .n{color:var(--accent);font-family:var(--mono);font-size:.9rem;margin-right:8px}
+  .lead{color:var(--muted);margin:0 0 22px;max-width:720px}
+
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:720px){.g2,.g3,.g4{grid-template-columns:1fr 1fr}}
+  @media (max-width:460px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;
+    box-shadow:var(--shadow)}
+  .card h3{margin:0 0 6px;font-size:1.02rem}
+  .card p{margin:0;color:var(--muted);font-size:.92rem}
+
+  /* Metric tiles */
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 16px 14px}
+  .tile .num{font-family:var(--mono);font-size:1.5rem;font-weight:600;color:var(--accent-2)}
+  .tile .lbl{color:var(--muted);font-size:.82rem;margin-top:2px}
+
+  /* Timeline */
+  .timeline{display:grid;gap:10px}
+  .step{display:flex;gap:14px;align-items:flex-start;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:13px 15px}
+  .dot{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+    font-size:.72rem;font-weight:700;margin-top:2px}
+  .done .dot{background:var(--accent);color:#04160e}
+  .next .dot{background:transparent;border:1.5px dashed var(--border);color:var(--muted)}
+  .step .t{font-weight:600}
+  .step .d{color:var(--muted);font-size:.88rem}
+  .step .st{margin-left:auto;font-family:var(--mono);font-size:.72rem;color:var(--muted);white-space:nowrap;padding-left:10px}
+  .done .st{color:var(--accent)}
+
+  /* Equation / code */
+  .eq{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;
+    font-family:var(--mono);font-size:.92rem;overflow-x:auto;color:var(--text)}
+  .eq .c{color:var(--muted)}
+
+  /* Sample compare */
+  .sample{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;height:100%}
+  .sample .h{font-family:var(--mono);font-size:.76rem;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.06em;margin-bottom:8px}
+  .sample .txt{font-family:var(--mono);font-size:.82rem;line-height:1.5;color:var(--text);white-space:pre-wrap;
+    background:var(--panel-2);border-radius:8px;padding:11px;border:1px solid var(--border)}
+
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+  td.mono,th.r,td.r{font-family:var(--mono)}
+  .r{text-align:right}
+  .tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+
+  .note{background:var(--accent-soft);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:8px;padding:12px 15px;color:var(--text);font-size:.9rem}
+  .note b{color:var(--accent)}
+
+  footer{border-top:1px solid var(--border);padding:30px 0 50px;color:var(--muted);font-size:.86rem;text-align:center}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="sprout">🌱</div>
+    <h1><span class="accent">Beeja</span> — a language model<br/>grown from first principles</h1>
+    <p class="tag">A decoder-only Transformer built from scratch in PyTorch — attention, byte-level BPE,
+      and a resumable training pipeline, all implemented and tested by hand on an 8&nbsp;GB Apple Silicon Mac.</p>
+    <div class="badges">
+      <span class="pill">PyTorch · from scratch</span>
+      <span class="pill">no Hugging Face model classes</span>
+      <span class="pill">Apple Silicon (MPS)</span>
+      <span class="pill">75 tests passing</span>
+    </div>
+    <div><a class="cta" href="https://github.com/DheerajPranav/beeja-lm">View the repository on GitHub →</a></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <h2>What Beeja is</h2>
+    <p class="lead"><em>Beeja</em> means <em>seed</em>. It starts as random noise and learns, one token at a
+      time, to predict what comes next. The point isn't a big model — it's to build and understand every
+      mechanism a modern language model is made of, transparently enough to test and explain each one.</p>
+    <div class="grid g3">
+      <div class="card"><h3>Built by hand</h3><p>Embeddings, causal self-attention, MLP, residual blocks,
+        normalization, and generation are written from raw tensor ops — no prebuilt GPT class.</p></div>
+      <div class="card"><h3>Tested, not claimed</h3><p>Every component has a focused test: attention shapes,
+        no-future-leakage, tiny-batch overfit, checkpoint round-trips, tokenizer round-trips.</p></div>
+      <div class="card"><h3>Honest by design</h3><p>Every number here is measured on the hardware below.
+        Nothing is fabricated; results on a tiny corpus are labelled as such.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The build, stage by stage</h2>
+    <p class="lead">A staged roadmap from an empty repo to a versioned model family. Five stages are complete
+      and verified; the rest are scoped and next in line.</p>
+    <div class="timeline">
+      <div class="step done"><span class="dot">✓</span><div><div class="t">Bootstrap</div>
+        <div class="d">Installable package, device selection (MPS→CUDA→CPU), deterministic seeding, environment report.</div></div><span class="st">done</span></div>
+      <div class="step done"><span class="dot">✓</span><div><div class="t">Bigram baseline</div>
+        <div class="d">Character tokenizer, batching, and a lookup-table baseline. Loss 4.07 → 2.06.</div></div><span class="st">done</span></div>
+      <div class="step done"><span class="dot">✓</span><div><div class="t">Beeja-3M Transformer</div>
+        <div class="d">Manual causal self-attention, pre-norm blocks, GELU MLP, generation. 3.21M measured params.</div></div><span class="st">done</span></div>
+      <div class="step done"><span class="dot">✓</span><div><div class="t">Byte-level BPE tokenizer</div>
+        <div class="d">Merge learning from scratch, save/load, special tokens. 2.46 bytes/token held-out.</div></div><span class="st">done</span></div>
+      <div class="step done"><span class="dot">✓</span><div><div class="t">Pretraining pipeline</div>
+        <div class="d">AdamW, warmup + cosine schedule, grad accumulation & clipping, exact checkpoint/resume.</div></div><span class="st">done</span></div>
+      <div class="step next"><span class="dot">·</span><div><div class="t">Modern architecture</div>
+        <div class="d">RoPE, RMSNorm, SwiGLU, weight tying, mixed precision.</div></div><span class="st">next</span></div>
+      <div class="step next"><span class="dot">·</span><div><div class="t">Instruction tuning · Evaluation · MLX · Chat app · Polish</div>
+        <div class="d">Assistant-only loss, reproducible metrics, Apple-Silicon inference, a chat UI, and the final write-up.</div></div><span class="st">planned</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Beeja-3M — the first named release</h2>
+    <p class="lead">A decoder-only autoregressive Transformer, sized so the <em>3M</em> in the name is honest.
+      Parameter counts below are measured, not estimated.</p>
+    <div class="grid g4" style="margin-bottom:16px">
+      <div class="tile"><div class="num">3.21M</div><div class="lbl">total parameters</div></div>
+      <div class="tile"><div class="num">4 × 256</div><div class="lbl">layers × model dim</div></div>
+      <div class="tile"><div class="num">128</div><div class="lbl">context length</div></div>
+      <div class="tile"><div class="num">12.25<span style="font-size:.9rem"> MiB</span></div><div class="lbl">params, fp32</div></div>
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>Component</th><th class="r">Parameters</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>MLP</td><td class="r mono">2,102,272</td><td class="muted">4× GELU feed-forward</td></tr>
+          <tr><td>Attention</td><td class="r mono">1,052,672</td><td class="muted">multi-head, 4 heads × 64</td></tr>
+          <tr><td>Embeddings</td><td class="r mono">42,496</td><td class="muted">token + position</td></tr>
+          <tr><td>LM head</td><td class="r mono">9,728</td><td class="muted">projection to vocab</td></tr>
+          <tr><td>Norms / other</td><td class="r mono">4,608</td><td class="muted">LayerNorm affine</td></tr>
+          <tr><td><b>Total</b></td><td class="r mono"><b>3,211,776</b></td><td class="muted">measured</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The mechanism at the core</h2>
+    <p class="lead">Causal self-attention lets each position read from every earlier position — and the mask is
+      what keeps prediction honest (no peeking ahead). It's implemented explicitly, not via a fused kernel.</p>
+    <div class="eq">Attention(Q, K, V) = softmax( (Q Kᵀ / √d_k) + causal_mask ) V
+<span class="c">
+# the mask sets every future key to −∞ *before* softmax, so its probability is exactly 0
+# verified end-to-end: perturbing token t leaves all logits before t bit-for-bit unchanged</span></div>
+    <p class="lead" style="margin-top:18px">Trained on next-token cross-entropy:</p>
+    <div class="eq">L = −(1/T) · Σₜ log p(xₜ | x&lt;ₜ)</div>
+  </section>
+
+  <section>
+    <h2>What the model learned to write</h2>
+    <p class="lead">The same tiny corpus, two models. The bigram sees only the previous character; the
+      Transformer sees the whole context. The jump is the reason attention exists.</p>
+    <div class="grid g2">
+      <div class="sample"><div class="h">Bigram baseline (context = 1)</div>
+        <div class="txt">Fivelytha d teecend atstheed, s angoitiowathauerewle mee at arndomathel t u. Fisothewa t q illle arst wsl l d sis</div></div>
+      <div class="sample"><div class="h">Beeja Transformer (full context)</div>
+        <div class="txt">the goal is understanding, not size.
+Grow slowly. Test everything. The model is small, and the tree patient, the seed becomes a</div></div>
+    </div>
+    <p class="muted" style="font-size:.84rem;margin-top:12px">Samples from smoke runs that deliberately
+      overfit a ~640-character corpus — enough to show attention capturing structure, not a trained release.</p>
+  </section>
+
+  <section>
+    <h2>Measured results</h2>
+    <p class="lead">Small, honest, and reproducible from the commands in the repo.</p>
+    <div class="grid g4">
+      <div class="tile"><div class="num">4.07→2.06</div><div class="lbl">bigram loss, 500 steps</div></div>
+      <div class="tile"><div class="num">3.67→0.26</div><div class="lbl">Transformer smoke overfit</div></div>
+      <div class="tile"><div class="num">2.46</div><div class="lbl">BPE bytes / token (held-out)</div></div>
+      <div class="tile"><div class="num">exact</div><div class="lbl">checkpoint resume (atol 1e-6)</div></div>
+    </div>
+    <div class="note" style="margin-top:18px"><b>Honesty note.</b> Beeja-3M is currently an
+      <b>architecture</b> checkpoint (random initialization); the metrics above come from tiny-corpus smoke
+      and overfit tests that verify the <em>machinery</em>. A full training run on a real corpus is scripted
+      and ready for Colab/GPU, but has not been launched.</div>
+  </section>
+
+  <section>
+    <h2>Where it runs</h2>
+    <div class="grid g2">
+      <div class="card"><h3>Local development</h3><p>Apple Silicon M2, 8&nbsp;GB unified memory · PyTorch 2.13
+        with the MPS backend · Python 3.13. Local defaults are kept small and safe; only smoke tests run
+        automatically.</p></div>
+      <div class="card"><h3>Reproduce it</h3><p class="mono" style="font-size:.82rem;color:var(--text)">
+        git clone …/beeja-lm<br/>pip install -e ".[dev]"<br/>pytest&nbsp;&nbsp;<span class="muted"># 75 passing</span><br/>
+        python -m beeja.train --config configs/smoke.yaml</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><span class="sprout" style="font-size:20px">🌱</span><br/>
+      <b>Beeja</b> · an educational language-model family, built and documented in the open.<br/>
+      <a href="https://github.com/DheerajPranav/beeja-lm">github.com/DheerajPranav/beeja-lm</a></p>
+    <p class="muted">Every metric on this page is measured; results on tiny corpora are labelled as such.</p>
+  </div>
+</footer>
+
+</body>
+</html>
