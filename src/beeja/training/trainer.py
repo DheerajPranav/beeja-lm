@@ -17,6 +17,7 @@ as an uninterrupted one.
 from __future__ import annotations
 
 import math
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from beeja.training.config import TrainConfig
 from beeja.training.schedule import lr_at
 
 FORMAT_VERSION = 1
+_AMP_DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16}
 
 
 class Trainer:
@@ -68,6 +70,14 @@ class Trainer:
         for group in self.optimizer.param_groups:
             group["lr"] = lr
 
+    def _autocast(self):
+        """Autocast context for the forward pass when mixed precision is enabled."""
+        if not self.config.amp:
+            return nullcontext()
+        dev = self.config.device
+        device_type = "cuda" if "cuda" in dev else ("mps" if dev == "mps" else "cpu")
+        return torch.autocast(device_type=device_type, dtype=_AMP_DTYPES[self.config.amp_dtype])
+
     def train_step(self) -> tuple[float, float]:
         """Run one optimizer step (with accumulation). Returns (loss, lr)."""
         cfg = self.config
@@ -91,7 +101,8 @@ class Trainer:
                 generator=self.generator,
                 device=cfg.device,
             )
-            _, loss = self.model(x, y)
+            with self._autocast():  # mixed precision (if enabled) wraps only the forward
+                _, loss = self.model(x, y)
             # Divide so summed micro-grads equal the full-batch mean gradient.
             (loss / cfg.grad_accum_steps).backward()
             total_loss += loss.item() / cfg.grad_accum_steps

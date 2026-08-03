@@ -22,12 +22,26 @@ class ModelConfig:
     dropout: float = 0.0
     bias: bool = True  # bias in Linear / LayerNorm layers
 
+    # Modern-architecture switches. Defaults reproduce the original baseline.
+    pos_encoding: str = "learned"  # "learned" | "rope"
+    norm: str = "layernorm"  # "layernorm" | "rmsnorm"
+    mlp: str = "gelu"  # "gelu" | "swiglu"
+    tie_weights: bool = False  # share token embedding with the LM head
+
     def __post_init__(self) -> None:
         if self.n_embd % self.n_head != 0:
             raise ValueError(f"n_embd ({self.n_embd}) must be divisible by n_head ({self.n_head})")
         for field in ("vocab_size", "block_size", "n_layer", "n_head", "n_embd"):
             if getattr(self, field) <= 0:
                 raise ValueError(f"{field} must be positive, got {getattr(self, field)}")
+        if self.pos_encoding not in ("learned", "rope"):
+            raise ValueError(f"pos_encoding must be 'learned' or 'rope', got {self.pos_encoding!r}")
+        if self.norm not in ("layernorm", "rmsnorm"):
+            raise ValueError(f"norm must be 'layernorm' or 'rmsnorm', got {self.norm!r}")
+        if self.mlp not in ("gelu", "swiglu"):
+            raise ValueError(f"mlp must be 'gelu' or 'swiglu', got {self.mlp!r}")
+        if self.pos_encoding == "rope" and self.head_size % 2 != 0:
+            raise ValueError(f"RoPE needs an even head_size, got {self.head_size}")
 
     @property
     def head_size(self) -> int:
@@ -51,4 +65,36 @@ def beeja_3m_config(vocab_size: int) -> ModelConfig:
     """
     return ModelConfig(
         vocab_size=vocab_size, block_size=128, n_layer=4, n_head=4, n_embd=256, dropout=0.0
+    )
+
+
+def modern_smoke_config(vocab_size: int) -> ModelConfig:
+    """Tiny modern config (RoPE + RMSNorm + SwiGLU + weight tying) for tests."""
+    return ModelConfig(
+        vocab_size=vocab_size,
+        block_size=32,
+        n_layer=2,
+        n_head=4,
+        n_embd=64,
+        dropout=0.0,
+        pos_encoding="rope",
+        norm="rmsnorm",
+        mlp="swiglu",
+        tie_weights=True,
+    )
+
+
+def beeja_3m_modern_config(vocab_size: int) -> ModelConfig:
+    """Beeja-3M with the modern stack: RoPE, RMSNorm, SwiGLU, weight tying."""
+    return ModelConfig(
+        vocab_size=vocab_size,
+        block_size=128,
+        n_layer=4,
+        n_head=4,
+        n_embd=256,
+        dropout=0.0,
+        pos_encoding="rope",
+        norm="rmsnorm",
+        mlp="swiglu",
+        tie_weights=True,
     )

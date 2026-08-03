@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from beeja.models.config import ModelConfig
+from beeja.models.rope import apply_rope, build_rope_cache
 
 
 class SingleHeadAttention(nn.Module):
@@ -76,6 +77,12 @@ class MultiHeadSelfAttention(nn.Module):
                 1, 1, config.block_size, config.block_size
             ),
         )
+        # RoPE rotates Q/K by position inside attention (no learned position embedding).
+        self.use_rope = config.pos_encoding == "rope"
+        if self.use_rope:
+            cos, sin = build_rope_cache(config.block_size, config.head_size)
+            self.register_buffer("rope_cos", cos, persistent=False)
+            self.register_buffer("rope_sin", sin, persistent=False)
 
     def forward(self, x: torch.Tensor, return_attn: bool = False):
         b, t, c = x.shape
@@ -84,6 +91,10 @@ class MultiHeadSelfAttention(nn.Module):
         q = q.view(b, t, self.n_head, self.head_size).transpose(1, 2)
         k = k.view(b, t, self.n_head, self.head_size).transpose(1, 2)
         v = v.view(b, t, self.n_head, self.head_size).transpose(1, 2)
+
+        if self.use_rope:  # apply rotary embedding to Q and K (relative position)
+            q = apply_rope(q, self.rope_cos[:t], self.rope_sin[:t])
+            k = apply_rope(k, self.rope_cos[:t], self.rope_sin[:t])
 
         att = (q @ k.transpose(-2, -1)) * self.head_size**-0.5  # [B,nh,T,T]
         att = att.masked_fill(self.mask[:, :, :t, :t] == 0, float("-inf"))

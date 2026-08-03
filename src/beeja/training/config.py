@@ -25,3 +25,5 @@ class TrainConfig:
     device: str = "cpu"
     out_dir: str = "checkpoints"
     name: str = "Beeja-3M"
+    amp: bool = False  # mixed-precision autocast for the forward pass
+    amp_dtype: str = "bf16"  # "bf16" | "fp16"

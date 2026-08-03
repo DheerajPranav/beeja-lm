@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`pretrain-complete` — next: `modernize`
+`modernize-complete` — next: `pretrain` (real training run on Colab/GPU) or `chat`
 
 ## Milestones
 
@@ -20,7 +20,7 @@
 | Beeja-3M baseline | Complete | Measured 3,211,776 params (~3.21M, 12.25 MiB fp32); attention shapes + probs-sum-to-1 + no-future-leakage tests pass; end-to-end causal leakage test passes; tiny-batch overfit → loss <0.05; checkpoint round-trip preserves logits (atol 1e-6); `Beeja-3M` checkpoint + model card generated; 49 tests pass |
 | Custom BPE tokenizer | Complete | Byte-level BPE from scratch; ASCII + Unicode (emoji/CJK) round trips; deterministic training; save/load identity; special-token handling; measured compression 2.46 bytes/token on held-out text; 61 tests pass |
 | Intermediate pretraining | Complete | Config-driven resumable pipeline (AdamW + warmup/cosine + clip + accumulation); leakage-safe subword data; smoke config completes locally; exact resume verified (unit + CLI); grad-accum == full-batch; full-run config prepared, not launched; 75 tests pass |
-| Modern architecture | Not started | RoPE, RMSNorm, SwiGLU comparisons pass |
+| Modern architecture | Complete | RoPE (relative-position dot-product invariance), RMSNorm (unit-RMS + manual match), SwiGLU, weight tying, mixed-precision autocast — each with a focused test; config-flagged on BeejaGPT (baseline defaults unchanged); modern still causal (no leakage); baseline-vs-modern comparison reported; modern Beeja-3M = 3,184,768 params; 84 tests pass |
 | Instruction tuning | Not started | Assistant-only loss and chat formatting verified |
 | Evaluation | Not started | Metrics and reproducible evaluation report |
 | MLX/local inference | Not started | Local generation benchmark on Apple Silicon |
@@ -87,6 +87,16 @@ python scripts/download_data.py                          # fetch corpus into dat
 python -m beeja.train --config configs/beeja-10m.yaml --device cuda   # Colab/GPU
 ```
 
+Modernize stage:
+
+```bash
+.venv/bin/python -m pytest                        # 84 passed
+.venv/bin/python scripts/compare_architectures.py --steps 300
+  # baseline  142,080 params  0.54 MiB  loss 5.76->0.11  val 5.31
+  # modern    122,496 params  0.47 MiB  loss 5.77->0.12  val 5.26  (RoPE+RMSNorm+SwiGLU+tied)
+  # modern Beeja-3M measures 3,184,768 params
+```
+
 ## Decisions
 
 - Primary framework: PyTorch.
@@ -100,4 +110,7 @@ python -m beeja.train --config configs/beeja-10m.yaml --device cuda   # Colab/GP
 
 ## Next action
 
-Run `/beeja-lab modernize`.
+Modernize is done. Recommended: launch the first real training run of the modern
+Beeja-3M on Colab/GPU (`scripts/download_data.py` then `configs/beeja-10m.yaml`,
+switching the model section to the modern flags), then `/beeja-lab evaluate`.
+Alternatively continue locally with `/beeja-lab chat` (instruction tuning).

@@ -244,3 +244,52 @@ download script are prepared but **not** launched (per project policy).
 schedule, accumulation, clipping, evaluation hygiene, and — most underrated —
 being able to stop and resume without changing the result. Determinism is a
 feature you engineer (own your RNG state), not something you hope for.
+
+---
+
+## Stage 6 — Modern architecture (2026-08-04)
+
+**Concept.** Upgrade the baseline block to the components a 2024-era LLM uses,
+each added as a config switch on the same `BeejaGPT` so a baseline and a modern
+model differ only in these parts (defaults keep the original baseline).
+
+**RoPE (Rotary Position Embeddings).** Rotate Q and K by an angle ∝ position
+instead of adding a learned vector. Key property (and the test): the score
+⟨R_m·q, R_n·k⟩ depends only on the *relative* distance m−n — verified numerically
+that score(2,5) == score(4,7). Position 0 is the identity rotation. Implemented
+with the "rotate-half" layout: `x·cos + rotate_half(x)·sin`, cos/sin of shape
+[T, head_size]. RoPE lives *inside* attention, so the model drops the learned
+position embedding entirely — yet stays strictly causal (leakage test still passes).
+
+**RMSNorm.** Drop LayerNorm's mean-centring; rescale by the root-mean-square:
+`x / sqrt(mean(x²)+eps) · weight`. No bias, half the norm parameters, and the
+statistic is computed in float32 for mixed-precision stability. Verified against
+the manual formula and that output rows have unit RMS.
+
+**SwiGLU.** Gated feed-forward: `(SiLU(x·W_gate) ⊙ (x·W_up))·W_down`. Three
+matrices with hidden ≈ 8d/3 so the parameter budget stays ~equal to the 4×
+GELU MLP (8·d²).
+
+**Weight tying.** Share one matrix between the token embedding and the LM head.
+`self.lm_head.weight = self.token_emb.weight` — the same tensor object embeds
+inputs and scores outputs, removing a whole vocab×d matrix from the count.
+
+**Mixed precision.** `torch.autocast` wraps only the forward pass (bf16 by
+default; fp16+GradScaler left for the CUDA full run). One step runs finite on CPU
+bf16 in the test.
+
+**Controlled comparison (same seed/data/schedule, tiny corpus).**
+
+    arch        params     MiB   loss0    lossN     val
+    baseline   142,080    0.54   5.756    0.114    5.314
+    modern     122,496    0.47   5.766    0.123    5.257
+
+Modern is *leaner* (RoPE removes position emb, tying removes the head, RMSNorm
+halves norm params) at ~equal capacity. Val is comparable — on a ~640-char corpus
+this compares the machinery, not scaled quality. Modern Beeja-3M measures
+3,184,768 params (vs baseline 3,211,776), still ~3M.
+
+**Understanding shift.** The modern stack is less about "more" and more about
+*better-conditioned*: relative positions that extrapolate, a cheaper norm, a
+gated MLP, and a shared embedding — most of which *reduce* parameters while
+improving trainability. The next real training run should use these flags.

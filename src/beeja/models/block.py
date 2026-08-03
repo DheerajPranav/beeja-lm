@@ -1,14 +1,15 @@
-"""A single Transformer block (pre-normalization).
+"""A single Transformer block (pre-normalization), with pluggable norm and MLP.
 
 Design decision: **pre-norm** residual connections, i.e. normalize *before* each
 sub-layer and add the result back:
 
-    x = x + Attention(LayerNorm(x))
-    x = x + MLP(LayerNorm(x))
+    x = x + Attention(Norm(x))
+    x = x + FeedForward(Norm(x))
 
 Pre-norm keeps a clean identity path from input to output, which makes deep
-stacks train stably without a learning-rate warmup as delicate as post-norm
-needs. We keep this consistent across every block.
+stacks train stably. The normalization (LayerNorm / RMSNorm) and the feed-forward
+(GELU MLP / SwiGLU) are selected from the model config, so a "baseline" and a
+"modern" block share this exact structure and differ only in those swappable parts.
 """
 
 from __future__ import annotations
@@ -19,15 +20,29 @@ import torch.nn as nn
 from beeja.models.attention import MultiHeadSelfAttention
 from beeja.models.config import ModelConfig
 from beeja.models.mlp import MLP
+from beeja.models.rmsnorm import RMSNorm
+from beeja.models.swiglu import SwiGLU
+
+
+def make_norm(config: ModelConfig) -> nn.Module:
+    if config.norm == "rmsnorm":
+        return RMSNorm(config.n_embd)
+    return nn.LayerNorm(config.n_embd, bias=config.bias)
+
+
+def make_mlp(config: ModelConfig) -> nn.Module:
+    if config.mlp == "swiglu":
+        return SwiGLU(config)
+    return MLP(config)
 
 
 class TransformerBlock(nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
-        self.ln1 = nn.LayerNorm(config.n_embd, bias=config.bias)
+        self.ln1 = make_norm(config)
         self.attn = MultiHeadSelfAttention(config)
-        self.ln2 = nn.LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+        self.ln2 = make_norm(config)
+        self.mlp = make_mlp(config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.ln1(x))
