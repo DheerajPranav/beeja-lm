@@ -17,6 +17,8 @@ checkpoints/*
 # so it does NOT match the source package src/beeja/data/.
 /data/
 artifacts/
+# Generated evaluation reports (regenerate from a checkpoint)
+reports/eval-*
 wandb/
 mlruns/
 .DS_Store

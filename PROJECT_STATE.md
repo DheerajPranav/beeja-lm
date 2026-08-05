@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`modernize-complete` — next: `pretrain` (real training run on Colab/GPU) or `chat`
+`evaluate-complete` — next: run the real Colab training, then `chat` (instruction tuning)
 
 ## Milestones
 
@@ -22,7 +22,7 @@
 | Intermediate pretraining | Complete | Config-driven resumable pipeline (AdamW + warmup/cosine + clip + accumulation); leakage-safe subword data; smoke config completes locally; exact resume verified (unit + CLI); grad-accum == full-batch; full-run config prepared, not launched; 75 tests pass |
 | Modern architecture | Complete | RoPE (relative-position dot-product invariance), RMSNorm (unit-RMS + manual match), SwiGLU, weight tying, mixed-precision autocast — each with a focused test; config-flagged on BeejaGPT (baseline defaults unchanged); modern still causal (no leakage); baseline-vs-modern comparison reported; modern Beeja-3M = 3,184,768 params; 84 tests pass |
 | Instruction tuning | Not started | Assistant-only loss and chat formatting verified |
-| Evaluation | Not started | Metrics and reproducible evaluation report |
+| Evaluation | Complete | Perplexity/bits-per-token (perplexity==exp(loss) verified), distinct-n diversity, generation benchmark (tokens/sec, memory, size), reproducible Markdown+JSON report with config/seed/hardware/limitations, no LLM-judge; `python -m beeja.evaluate` runs from a checkpoint; eval never mutates params; 92 tests pass |
 | MLX/local inference | Not started | Local generation benchmark on Apple Silicon |
 | Chat application | Not started | CLI or local web interface works |
 | Final polish | Not started | Documentation, diagrams, results, demo |
@@ -95,6 +95,16 @@ Modernize stage:
   # baseline  142,080 params  0.54 MiB  loss 5.76->0.11  val 5.31
   # modern    122,496 params  0.47 MiB  loss 5.77->0.12  val 5.26  (RoPE+RMSNorm+SwiGLU+tied)
   # modern Beeja-3M measures 3,184,768 params
+```
+
+Evaluation stage:
+
+```bash
+.venv/bin/python -m pytest                        # 92 passed
+.venv/bin/python -m beeja.evaluate --config configs/smoke.yaml \
+    --checkpoint checkpoints/Beeja-3M-final.pt --eval-batches 20
+  # perplexity + bits/token + tokens/sec; writes reports/eval-<name>.md (+ .json)
+  # (smoke checkpoint -> high perplexity; real numbers come after Colab training)
 ```
 
 ## Decisions

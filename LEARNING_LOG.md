@@ -293,3 +293,37 @@ this compares the machinery, not scaled quality. Modern Beeja-3M measures
 *better-conditioned*: relative positions that extrapolate, a cheaper norm, a
 gated MLP, and a shared embedding — most of which *reduce* parameters while
 improving trainability. The next real training run should use these flags.
+
+---
+
+## Stage 8 — Evaluation (2026-08-06)
+
+**Concept.** Build the machinery to measure a model honestly, so the moment a
+real checkpoint exists we can report intrinsic quality and runtime cost — no
+LLM-as-judge anywhere.
+
+**Perplexity.** `perplexity = exp(mean cross-entropy)` — the effective number of
+equally-likely tokens the model chooses among. `bits_per_token = loss / ln 2`.
+Verified the identity `perplexity == exp(loss)` exactly; a random-init model sits
+near perplexity ≈ vocab size (max confusion). Perplexity is only comparable
+within the same tokenizer + corpus — stated as a limitation in the report.
+
+**Diversity (lexical).** `distinct-n` = unique n-grams / total n-grams of the
+*generated* text; `repetition-1 = 1 − distinct-1`. Catches degenerate looping
+without judging coherence. `[1,1,1,1]` → distinct-1 = 0.25; all-unique → 1.0.
+
+**Runtime benchmark.** After a warm-up, time generation to get tokens/second;
+report parameter count, param MiB, and (on CUDA) peak memory. On this M2 the
+smoke model runs ~2.4k tok/s on CPU.
+
+**Reproducible report.** `evaluation_report(...)` bundles metrics + diversity +
+benchmark + sample continuations for a small prompt set + the reproduction
+context (model config, seed, hardware via `environment_report`, and explicit
+limitations). Rendered to Markdown and JSON. `python -m beeja.evaluate` runs it
+from any saved checkpoint. Evaluation is strictly no-grad and leaves parameters
+untouched (tested).
+
+**Understanding shift.** "Evaluation" for a base LM is mostly *loss framed three
+ways* (nats → perplexity → bits) plus honesty scaffolding: state the seed, the
+hardware, and what the metric does **not** measure. A number without its context
+is not a result.
