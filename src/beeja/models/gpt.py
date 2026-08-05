@@ -82,6 +82,27 @@ class BeejaGPT(nn.Module):
             loss = F.cross_entropy(logits.view(-1, v), targets.view(-1))
         return logits, loss
 
+    def _forward_cached(
+        self,
+        idx: torch.Tensor,
+        caches: list[tuple[torch.Tensor, torch.Tensor] | None],
+        past_length: int,
+    ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        """Forward the new tokens ``idx`` given per-layer KV caches. Returns (logits, caches)."""
+        _, t = idx.shape
+        x = self.token_emb(idx)
+        if self.pos_emb is not None:  # learned positions continue from past_length
+            pos = torch.arange(past_length, past_length + t, device=idx.device)
+            x = x + self.pos_emb(pos)
+        x = self.drop(x)
+        new_caches: list[tuple[torch.Tensor, torch.Tensor]] = []
+        for block, past in zip(self.blocks, caches, strict=True):
+            x, present = block.forward_cached(x, past)
+            new_caches.append(present)
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
+        return logits, new_caches
+
     @torch.no_grad()
     def generate(
         self,
@@ -91,15 +112,56 @@ class BeejaGPT(nn.Module):
         temperature: float = 1.0,
         top_k: int | None = None,
         generator: torch.Generator | None = None,
+        use_cache: bool = False,
     ) -> torch.Tensor:
-        """Autoregressively extend ``idx`` [B,T], cropping context to block_size."""
+        """Autoregressively extend ``idx`` [B,T], cropping context to block_size.
+
+        ``use_cache=True`` uses the KV cache (fast path); results are identical to
+        the uncached path up to floating-point error.
+        """
         self.eval()
-        for _ in range(max_new_tokens):
-            idx_cond = idx[:, -self.config.block_size :]  # never exceed the context window
-            logits, _ = self(idx_cond)
-            next_logits = logits[:, -1, :]  # [B, V]
-            next_id = sample_next_token(
-                next_logits, temperature=temperature, top_k=top_k, generator=generator
-            )
-            idx = torch.cat([idx, next_id], dim=1)
+        if not use_cache:
+            for _ in range(max_new_tokens):
+                idx_cond = idx[:, -self.config.block_size :]  # never exceed context window
+                logits, _ = self(idx_cond)
+                next_id = sample_next_token(
+                    logits[:, -1, :], temperature=temperature, top_k=top_k, generator=generator
+                )
+                idx = torch.cat([idx, next_id], dim=1)
+            return idx
+
+        for tok in self.generate_stream(
+            idx, max_new_tokens, temperature=temperature, top_k=top_k, generator=generator
+        ):
+            idx = torch.cat([idx, tok.view(1, 1).to(idx.device)], dim=1)
         return idx
+
+    @torch.no_grad()
+    def generate_stream(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        *,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        generator: torch.Generator | None = None,
+    ):
+        """Yield each new token id (KV-cached). Batch size must be 1 for streaming."""
+        self.eval()
+        block_size = self.config.block_size
+        caches: list[tuple[torch.Tensor, torch.Tensor] | None] = [None] * len(self.blocks)
+        cond = idx[:, -block_size:]
+        logits, caches = self._forward_cached(cond, caches, past_length=0)
+        for _ in range(max_new_tokens):
+            next_id = sample_next_token(
+                logits[:, -1, :], temperature=temperature, top_k=top_k, generator=generator
+            )
+            yield next_id[0]
+            idx = torch.cat([idx, next_id], dim=1)
+            past_length = caches[0][0].size(2)
+            if past_length >= block_size:  # context full: recompute cache on the cropped window
+                cond = idx[:, -block_size:]
+                caches = [None] * len(self.blocks)
+                logits, caches = self._forward_cached(cond, caches, past_length=0)
+            else:
+                logits, caches = self._forward_cached(next_id, caches, past_length=past_length)

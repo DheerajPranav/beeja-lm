@@ -84,7 +84,19 @@ class MultiHeadSelfAttention(nn.Module):
             self.register_buffer("rope_cos", cos, persistent=False)
             self.register_buffer("rope_sin", sin, persistent=False)
 
-    def forward(self, x: torch.Tensor, return_attn: bool = False):
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_attn: bool = False,
+        past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+        use_cache: bool = False,
+    ):
+        """Compute attention, optionally reusing/extending a KV cache.
+
+        With ``past_kv`` (cached keys/values for earlier positions), only the new
+        tokens' K/V are computed and appended — turning per-step generation from
+        O(T²) into O(T). ``past_kv`` / ``use_cache`` are unused during training.
+        """
         b, t, c = x.shape
         q, k, v = self.qkv(x).split(c, dim=2)  # each [B,T,C]
         # Split channels into heads: [B,T,C] -> [B, n_head, T, head_size]
@@ -92,18 +104,30 @@ class MultiHeadSelfAttention(nn.Module):
         k = k.view(b, t, self.n_head, self.head_size).transpose(1, 2)
         v = v.view(b, t, self.n_head, self.head_size).transpose(1, 2)
 
-        if self.use_rope:  # apply rotary embedding to Q and K (relative position)
-            q = apply_rope(q, self.rope_cos[:t], self.rope_sin[:t])
-            k = apply_rope(k, self.rope_cos[:t], self.rope_sin[:t])
+        past_len = past_kv[0].size(2) if past_kv is not None else 0
+        if self.use_rope:  # rotate new Q/K at their absolute positions
+            cos = self.rope_cos[past_len : past_len + t]
+            sin = self.rope_sin[past_len : past_len + t]
+            q = apply_rope(q, cos, sin)
+            k = apply_rope(k, cos, sin)
 
-        att = (q @ k.transpose(-2, -1)) * self.head_size**-0.5  # [B,nh,T,T]
-        att = att.masked_fill(self.mask[:, :, :t, :t] == 0, float("-inf"))
+        if past_kv is not None:  # prepend cached keys/values along time
+            k = torch.cat([past_kv[0], k], dim=2)
+            v = torch.cat([past_kv[1], v], dim=2)
+        present = (k, v)
+
+        tk = k.size(2)
+        att = (q @ k.transpose(-2, -1)) * self.head_size**-0.5  # [B,nh,t,tk]
+        # New queries occupy absolute rows [past_len, past_len+t); mask future keys.
+        att = att.masked_fill(self.mask[:, :, past_len : past_len + t, :tk] == 0, float("-inf"))
         att = F.softmax(att, dim=-1)
         att = self.attn_dropout(att)
-        y = att @ v  # [B,nh,T,hs]
-        # Recombine heads: [B,nh,T,hs] -> [B,T,C]
+        y = att @ v  # [B,nh,t,hs]
+        # Recombine heads: [B,nh,t,hs] -> [B,t,C]
         y = y.transpose(1, 2).contiguous().view(b, t, c)
         y = self.resid_dropout(self.proj(y))
         if return_attn:
             return y, att
+        if use_cache:
+            return y, present
         return y

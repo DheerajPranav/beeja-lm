@@ -9,7 +9,7 @@
 
 ## Current stage
 
-`evaluate-complete` — next: run the real Colab training, then `chat` (instruction tuning)
+`app+kvcache-complete` — next: run the real Colab training, then `chat` (instruction tuning)
 
 ## Milestones
 
@@ -24,7 +24,8 @@
 | Instruction tuning | Not started | Assistant-only loss and chat formatting verified |
 | Evaluation | Complete | Perplexity/bits-per-token (perplexity==exp(loss) verified), distinct-n diversity, generation benchmark (tokens/sec, memory, size), reproducible Markdown+JSON report with config/seed/hardware/limitations, no LLM-judge; `python -m beeja.evaluate` runs from a checkpoint; eval never mutates params; 92 tests pass |
 | MLX/local inference | Not started | Local generation benchmark on Apple Silicon |
-| Chat application | Not started | CLI or local web interface works |
+| KV cache + CLI app | Complete | KV-cached generation (RoPE offset handled); cached==uncached verified for baseline + modern, incl. past-block_size crop; streaming `python -m beeja.app` REPL/one-shot with safe token cap and clear errors for invalid checkpoints; ~1.2x faster at ctx 128 (grows with context); 101 tests pass |
+| Chat application (instruct) | Not started | Instruction tuning + chat UI (after a trained base) |
 | Final polish | Not started | Documentation, diagrams, results, demo |
 
 ## Last verified command
@@ -105,6 +106,16 @@ Evaluation stage:
     --checkpoint checkpoints/Beeja-3M-final.pt --eval-batches 20
   # perplexity + bits/token + tokens/sec; writes reports/eval-<name>.md (+ .json)
   # (smoke checkpoint -> high perplexity; real numbers come after Colab training)
+```
+
+KV cache + app stage:
+
+```bash
+.venv/bin/python -m pytest                        # 101 passed
+.venv/bin/python -m beeja.app --config configs/smoke.yaml \
+    --checkpoint checkpoints/Beeja-3M-final.pt --prompt "the seed" --max-new-tokens 40
+  # streams a continuation; invalid --checkpoint -> "error: checkpoint not found", exit 1
+# KV-cache speedup (3M modern, 300 tokens, CPU): 340 -> 419 tok/s (~1.2x at ctx 128)
 ```
 
 ## Decisions

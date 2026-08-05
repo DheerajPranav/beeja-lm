@@ -327,3 +327,43 @@ untouched (tested).
 ways* (nats → perplexity → bits) plus honesty scaffolding: state the seed, the
 hardware, and what the metric does **not** measure. A number without its context
 is not a result.
+
+---
+
+## Stage 9 — KV cache + streaming CLI app (2026-08-06)
+
+**Concept.** Naive generation recomputes attention over the whole prefix every
+step — O(T²) total. A KV cache stores each layer's already-computed keys/values,
+so each new token only computes its own K/V and appends: O(T).
+
+**The three things the cache has to get right.**
+1. *Append* K/V along the time axis instead of recomputing them.
+2. *Mask*: the new query at absolute row `past_len+i` may see keys `0..past_len+i`.
+   Implemented by slicing the precomputed lower-triangular mask
+   `mask[past_len:past_len+t, :Tk]`. For a single new token this is "attend to
+   everything cached" (no future exists yet).
+3. *RoPE offset*: rotate the new Q/K at their **absolute** positions
+   `[past_len, past_len+t)`, and cache the *already-rotated* K so old keys keep
+   their original angles. Getting this wrong silently breaks position handling —
+   which is why the correctness test runs on the modern (RoPE) model too.
+
+**Correctness gate.** `cached == uncached` for greedy (top_k=1) decoding, on both
+the baseline and modern stacks, including generation past `block_size` (where the
+cache is rebuilt on the cropped window to mirror the uncached crop). Same tokens,
+bit-for-bit.
+
+**Measured.** 3M modern model, 300 tokens, CPU: 340 → 419 tok/s (~1.2×). The win
+is modest at context 128 and grows with longer contexts (the recomputation the
+cache avoids scales with prefix length).
+
+**The app.** `python -m beeja.app` loads a checkpoint + rebuilds its tokenizer,
+then streams a continuation token-by-token via `generate_stream` (decode
+all-so-far, emit the new suffix). Safe generation cap, clear errors for a missing
+or non-Beeja checkpoint. It's a *completion* REPL, not chat — this is a base model.
+
+**Understanding shift.** Inference optimizations must be *proven equivalent*, not
+assumed: a cache is only correct if it reproduces the naive path exactly. The
+"cached == uncached" test is the whole point — speed that changes the answer is a
+bug, not an optimization. (Also surfaced and fixed a real inconsistency: two
+checkpoint formats stored the model config under different keys; the loader now
+accepts both.)

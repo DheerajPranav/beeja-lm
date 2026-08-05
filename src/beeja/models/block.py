@@ -48,3 +48,12 @@ class TransformerBlock(nn.Module):
         x = x + self.attn(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
         return x
+
+    def forward_cached(
+        self, x: torch.Tensor, past_kv: tuple[torch.Tensor, torch.Tensor] | None
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """Pre-norm block step that threads a KV cache. Returns (x, present_kv)."""
+        attn_out, present = self.attn(self.ln1(x), past_kv=past_kv, use_cache=True)
+        x = x + attn_out
+        x = x + self.mlp(self.ln2(x))
+        return x, present
