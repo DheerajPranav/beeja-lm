@@ -110,7 +110,18 @@ Modernize stage:
 
 ## Next action
 
-Modernize is done. Recommended: launch the first real training run of the modern
-Beeja-3M on Colab/GPU (`scripts/download_data.py` then `configs/beeja-10m.yaml`,
-switching the model section to the modern flags), then `/beeja-lab evaluate`.
-Alternatively continue locally with `/beeja-lab chat` (instruction tuning).
+First real training run is set up and ready (TinyStories, modern Beeja-3M, char
+tokenizer). Run it on Colab:
+
+```bash
+# In notebooks/train_beeja_colab.ipynb (GPU runtime), or manually:
+python scripts/download_data.py --dataset tinystories
+python -m beeja.train --config configs/beeja-3m-tinystories.yaml --device cuda
+python -m beeja.generate --config configs/beeja-3m-tinystories.yaml \
+    --checkpoint checkpoints/Beeja-3M-TinyStories-final.pt --prompt "Once upon a time"
+```
+
+After a trained checkpoint exists: `/beeja-lab evaluate`, then update the showcase
+with real metrics/samples. Known limitation: the from-scratch BPE needs regex
+pre-splitting to be corpus-scale efficient (a clean follow-up); char-level is used
+for now.

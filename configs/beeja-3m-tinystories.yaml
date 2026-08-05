@@ -1,0 +1,47 @@
+# Beeja-3M on TinyStories — first REAL training run (modern architecture).
+#
+# Intended for Google Colab (GPU). The resumable pipeline survives Colab timeouts:
+#   1) python scripts/download_data.py --dataset tinystories
+#   2) python -m beeja.train --config configs/beeja-3m-tinystories.yaml --device cuda
+#   Resume: add --resume checkpoints/Beeja-3M-TinyStories-step<N>.pt
+#
+# Tokenizer note: char-level is used here because our from-scratch BPE isn't yet
+# optimized for corpus-scale text (no regex pre-splitting). TinyStories has a
+# small character set, so a 3M model learns real, coherent simple English from it.
+model:
+  block_size: 256
+  n_layer: 4
+  n_head: 4
+  n_embd: 256
+  dropout: 0.1
+  pos_encoding: rope       # modern stack
+  norm: rmsnorm
+  mlp: swiglu
+  tie_weights: true
+
+data:
+  source: data/TinyStories-valid.txt
+  tokenizer: char
+  val_fraction: 0.02
+  max_chars: 20000000      # ~20M chars for a bounded first run; raise for longer
+
+training:
+  max_steps: 8000
+  warmup_steps: 200
+  max_lr: 0.0006
+  min_lr: 0.00006
+  weight_decay: 0.1
+  grad_clip: 1.0
+  batch_size: 48
+  grad_accum_steps: 2      # effective batch 96
+  eval_interval: 250
+  eval_batches: 40
+  checkpoint_interval: 500
+  sample_interval: 500
+  sample_tokens: 200
+  seed: 1337
+  device: cuda
+  name: Beeja-3M-TinyStories
+  out_dir: checkpoints
+  amp: false               # enable bf16 on bf16-capable GPUs (A100); off is safe on T4
+  amp_dtype: bf16

@@ -24,11 +24,19 @@ from beeja.data.sample import SAMPLE_TEXT
 from beeja.tokenizer.bpe import BPETokenizer
 
 
-def load_text(source: str) -> str:
-    """``"sample"`` returns the embedded corpus; anything else is a file path."""
+def load_text(source: str, max_chars: int | None = None) -> str:
+    """``"sample"`` returns the embedded corpus; anything else is a file path.
+
+    ``max_chars`` caps how much text is read into memory — useful for taking a
+    manageable slice of a large corpus (e.g. TinyStories) for a bounded run.
+    """
     if source == "sample":
-        return SAMPLE_TEXT
-    return Path(source).read_text(encoding="utf-8")
+        text = SAMPLE_TEXT
+    else:
+        text = Path(source).read_text(encoding="utf-8")
+    if max_chars is not None and max_chars > 0:
+        text = text[:max_chars]
+    return text
 
 
 def build_tokenizer(kind: str, train_text: str, vocab_size: int = 320):
@@ -46,20 +54,30 @@ def build_datasets(
     tokenizer_kind: str = "char",
     vocab_size: int = 320,
     val_fraction: float = 0.1,
+    max_chars: int | None = None,
+    tokenizer_max_chars: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, object]:
     """Return ``(train_ids, val_ids, tokenizer)`` with no tokenizer leakage.
 
+    ``max_chars`` caps the corpus size read; ``tokenizer_max_chars`` (BPE only)
+    caps how much train text the tokenizer learns merges from — a representative
+    slice keeps our from-scratch BPE training tractable on large corpora.
+
     Both id tensors are 1-D ``LongTensor``s ready for ``get_batch``.
     """
-    text = load_text(source)
+    text = load_text(source, max_chars=max_chars)
     if not 0.0 < val_fraction < 1.0:
         raise ValueError(f"val_fraction must be in (0, 1), got {val_fraction}")
     split = int(len(text) * (1.0 - val_fraction))
     train_text, val_text = text[:split], text[split:]
 
     # char: alphabet from the full corpus (symbol space, not leakage).
-    # bpe:  merges learned from train text only (learned statistics).
-    tok_source = text if tokenizer_kind == "char" else train_text
+    # bpe:  merges learned from train text only (learned statistics), optionally
+    #       from a leading slice to keep tokenizer training tractable.
+    if tokenizer_kind == "char":
+        tok_source = text
+    else:
+        tok_source = train_text if tokenizer_max_chars is None else train_text[:tokenizer_max_chars]
     tokenizer = build_tokenizer(tokenizer_kind, tok_source, vocab_size)
     train_ids = torch.tensor(tokenizer.encode(train_text), dtype=torch.long)
     val_ids = torch.tensor(tokenizer.encode(val_text), dtype=torch.long)

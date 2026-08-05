@@ -42,3 +42,17 @@ def test_tokenizer_is_trained_on_train_text_only():
 def test_unknown_tokenizer_kind_raises():
     with pytest.raises(ValueError):
         build_tokenizer("wordpiece", "hello", vocab_size=300)
+
+
+def test_load_text_max_chars(tmp_path):
+    p = tmp_path / "f.txt"
+    p.write_text("x" * 500)
+    assert len(load_text(str(p), max_chars=100)) == 100
+    assert len(load_text(str(p))) == 500  # no cap
+
+
+def test_max_chars_caps_the_corpus(tmp_path):
+    p = tmp_path / "big.txt"
+    p.write_text("abcdefghij" * 100)  # 1000 chars
+    train_ids, val_ids, _ = build_datasets(str(p), "char", val_fraction=0.1, max_chars=200)
+    assert len(train_ids) + len(val_ids) == 200  # only the capped slice is used

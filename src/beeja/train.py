@@ -35,6 +35,8 @@ def build_trainer(cfg: dict, *, device: str | None = None, resume: str | None = 
         tokenizer_kind=data_cfg.get("tokenizer", "char"),
         vocab_size=data_cfg.get("vocab_size", 320),
         val_fraction=data_cfg.get("val_fraction", 0.1),
+        max_chars=data_cfg.get("max_chars"),
+        tokenizer_max_chars=data_cfg.get("tokenizer_max_chars"),
     )
 
     if resume:

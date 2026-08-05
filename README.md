@@ -94,6 +94,26 @@ claude "/beeja-lab bootstrap"
 claude "/beeja-next"
 ```
 
+## Train it for real (TinyStories on Colab)
+
+Everything above builds and *verifies* the model on tiny data. To get a model
+that actually writes coherent text, train the modern Beeja-3M on
+[TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) — a corpus
+built precisely so 1–30M-parameter models learn simple, fluent English.
+
+Open **`notebooks/train_beeja_colab.ipynb`** in Google Colab (GPU runtime), or run:
+
+```bash
+python scripts/download_data.py --dataset tinystories
+python -m beeja.train --config configs/beeja-3m-tinystories.yaml --device cuda
+python -m beeja.generate --config configs/beeja-3m-tinystories.yaml \
+    --checkpoint checkpoints/Beeja-3M-TinyStories-final.pt --prompt "Once upon a time"
+```
+
+Training is resumable (checkpoints every 500 steps), so a Colab timeout won't
+lose progress — re-run with `--resume checkpoints/<name>-step<N>.pt`. Expect
+short, mostly-grammatical simple stories: the honest ceiling for a 3M model.
+
 ## Recommended working rhythm
 
 1. Run one implementation stage.
